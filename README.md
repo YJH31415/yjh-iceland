@@ -24,7 +24,7 @@ Open the local URL printed by Vite. Production build: `npm run build`.
 
 This is a **software prototype, not a validated reconstruction of the 2010 event**. The live particle engine currently uses a synthetic 3-D wind field. Open-Meteo download is a surface/selected-height weather supplement; it does not provide the complete pressure-level 3-D atmospheric state needed for a defensible reconstruction. Its downloaded data are not yet wired into the particle integrator.
 
-The demo emission rate, particle weighting, particle count and concentration estimator are illustrative. City concentration is currently a local sampling approximation and must not be used for aviation decisions. The particle integrator uses a spherical-Earth approximation rather than WGS84 ellipsoidal geodesy. The displayed 2010 start clock is a replay timeline, not proof of observed time-resolved source terms.
+The demo emission rate and particle-size/source assumptions remain illustrative, and the concentration estimator is a coarse receptor-volume approximation. Super-particle weights conserve the configured emitted mass numerically, but do not make the source term historically validated. City concentration must not be used for aviation decisions. The particle integrator uses a spherical-Earth approximation rather than WGS84 ellipsoidal geodesy. The default source window spans 912 elapsed hours from 2010-04-14 as a provisional 38-day window; it is not a measured hourly eruption source series. The displayed 2010 start clock is a replay timeline, not proof of observed time-resolved source terms.
 
 ## Required next scientific integration
 
