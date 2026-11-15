@@ -6,9 +6,11 @@ export function demoWind(lat:number,lon:number,z:number,t:number){
   const altitudeFactor=Math.min(1.8,0.45+z/9000); const jet=Math.sin(rad(lat*2+lon*.35+t*.7));
   return {u:(8+7*jet)*altitudeFactor,v:(3+5*Math.cos(rad(lon+lat*.6-t*.4)))*altitudeFactor,w:0.025*Math.sin(rad(lat*3+lon+t))};
 }
-export function makeParticle(id:number,t:number,c:SimConfig):Particle{
+export function makeParticle(id:number,t:number,c:SimConfig,representedMassKg?:number):Particle{
   const d=(c.minDiameter+Math.random()*(c.maxDiameter-c.minDiameter))*1e-6;
-  const mass=Math.PI/6*c.particleDensity*d**3;
+  const grainMass=Math.PI/6*c.particleDensity*d**3;
+  // mass is the physical ash mass represented by this computational super-particle.
+  const mass=representedMassKg??grainMass;
   return {id,lat:63.63+(Math.random()-.5)*.12,lon:-19.62+(Math.random()-.5)*.12,z:1651+Math.random()*c.plumeTop,u:0,v:0,w:0,diameter:d,density:c.particleDensity,mass,alive:true};
 }
 export function stepParticle(p:Particle,dt:number,t:number,c:SimConfig){
@@ -28,8 +30,10 @@ export function stepParticle(p:Particle,dt:number,t:number,c:SimConfig){
   p.z+=vertical;if(p.z<=0){p.z=0;p.alive=false;}if(p.z>45000){p.z=45000;p.w=Math.min(0,p.w);}
 }
 export function concentrationAt(lat:number,lon:number,particles:Particle[],radiusKm=35){
-  const volume=Math.PI*(radiusKm*1000)**2*1500;let mass=0;
-  for(const p of particles){if(!p.alive)continue;const dy=(p.lat-lat)*111.2,dx=(p.lon-lon)*111.2*Math.cos(rad(lat));if(dx*dx+dy*dy<radiusKm*radiusKm)mass+=p.mass*1e9;}
-  return mass/volume*1e6;
+  // Ground-level city receptor: cylinder of radius 35 km and altitude 0–3 km.
+  // kg -> mg is 1e6 (not 1e15); concentration is represented ash mass / receptor volume.
+  const receptorHeight=3000,volume=Math.PI*(radiusKm*1000)**2*receptorHeight;let massKg=0;
+  for(const p of particles){if(!p.alive||p.z<0||p.z>receptorHeight)continue;const dy=(p.lat-lat)*111.2,dx=(p.lon-lon)*111.2*Math.cos(rad(lat));if(dx*dx+dy*dy<radiusKm*radiusKm)massKg+=p.mass;}
+  return massKg*1e6/volume;
 }
 export function alertLevel(v:number){return v>=10?'매우 높음':v>=5?'높음':v>=2?'중간':v>=.2?'낮음':'매우 낮음';}
