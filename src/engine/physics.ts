@@ -1,5 +1,5 @@
 import type {Particle,SimConfig} from './types';
-import {sampleEra5} from '../data/era5';
+import {sampleOpenMeteo} from '../data/weather';
 const R=6371008.8, G=9.80665, MU=1.81e-5;
 const rad=(x:number)=>x*Math.PI/180;
 const gaussian=()=>{const a=Math.max(1e-12,Math.random()),b=Math.random();return Math.sqrt(-2*Math.log(a))*Math.cos(2*Math.PI*b);};
@@ -16,7 +16,7 @@ export function makeParticle(id:number,t:number,c:SimConfig,representedMassKg?:n
 }
 export function stepParticle(p:Particle,dt:number,t:number,c:SimConfig){
   if(!p.alive||dt<=0)return;
-  const met=sampleEra5(p.lat,p.lon,p.z,Date.UTC(2010,3,14)/1000+t*3600);const wind=met??demoWind(p.lat,p.lon,p.z,t),rho=met?Math.max(0.05,1.225*Math.exp(-Math.max(0,p.z)/8500)*(met.temperature>0?288.15/met.temperature:1)):1.225*Math.exp(-Math.max(0,p.z)/8500);
+  const met=sampleOpenMeteo(p.lat,p.lon,p.z,Date.UTC(2010,3,14)/1000+t*3600);const wind=met??demoWind(p.lat,p.lon,p.z,t),rho=met?Math.max(0.05,met.pressurePa/(287.05*met.temperatureK)):1.225*Math.exp(-Math.max(0,p.z)/8500);
   const rel=Math.max(0.001,Math.hypot(wind.u-p.u,wind.v-p.v,wind.w-p.w));
   const re=rho*rel*p.diameter/MU;
   const k=re<0.1?18*MU/(Math.max(1,p.density)*p.diameter*p.diameter):(3*(re<1000?24/re*(1+0.15*Math.pow(re,.687)):.44)*rho*rel)/(4*Math.max(1,p.density)*p.diameter);
