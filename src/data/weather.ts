@@ -15,14 +15,33 @@ const chunks=<T,>(a:T[],n:number)=>Array.from({length:Math.ceil(a.length/n)},(_,
 function toVector(speed:number,direction:number){const r=direction*DEG;return{u:-speed*Math.sin(r),v:-speed*Math.cos(r)};}
 async function requestBatch(points:{lat:number;lon:number}[]){
  const url=new URL('https://archive-api.open-meteo.com/v1/archive');
- const q:Record<string,string>={latitude:points.map(p=>p.lat.toFixed(2)).join(','),longitude:points.map(p=>p.lon.toFixed(2)).join(','),start_date:START,end_date:END, hourly:'temperature_2m,relative_humidity_2m,precipitation,pressure_msl,wind_speed_10m,wind_direction_10m,wind_speed_100m,wind_direction_100m,boundary_layer_height',wind_speed_unit:'ms',timezone:'UTC',models:'era5'};
+ const q:Record<string,string>={latitude:points.map(p=>p.lat.toFixed(2)).join(','),longitude:points.map(p=>p.lon.toFixed(2)).join(','),start_date:START,end_date:END,hourly:'temperature_2m,relative_humidity_2m,precipitation,pressure_msl,wind_speed_10m,wind_direction_10m,wind_speed_100m,wind_direction_100m,boundary_layer_height',wind_speed_unit:'ms',timezone:'UTC',models:'era5'};
  Object.entries(q).forEach(([k,v])=>url.searchParams.set(k,v));
- let last:unknown;
- for(let attempt=0;attempt<3;attempt++){
-  try{const res=await fetch(url.toString());if(!res.ok)throw new Error('Open-Meteo HTTP '+res.status);const data=await res.json();return Array.isArray(data)?data:[data];}
-  catch(e){last=e;if(attempt<2)await new Promise(r=>setTimeout(r,700*(attempt+1)));}
+ let lastMessage='알 수 없는 API 오류';
+ for(let attempt=0;attempt<6;attempt++){
+  try{
+   const res=await fetch(url.toString());
+   if(!res.ok){
+    const body=(await res.text()).slice(0,500);
+    const detail='HTTP '+res.status+(body?' · '+body:'');
+    if(res.status===429||res.status===500||res.status===502||res.status===503||res.status===504){
+     lastMessage=detail;
+     const retryAfter=Number(res.headers.get('Retry-After'));
+     const delay=Number.isFinite(retryAfter)&&retryAfter>0?retryAfter*1000:Math.min(20000,1500*Math.pow(2,attempt));
+     if(attempt<5){await new Promise(r=>setTimeout(r,delay));continue;}
+    }
+    throw new Error('Open-Meteo 요청 실패: '+detail);
+   }
+   const data=await res.json();
+   const payload=Array.isArray(data)?data:[data];
+   if(payload.some((x:any)=>x?.error))throw new Error('Open-Meteo 오류: '+payload.map((x:any)=>x.reason||'요청 거부').join('; '));
+   return payload;
+  }catch(e){
+   lastMessage=e instanceof Error?e.message:String(e);
+   if(attempt<5)await new Promise(r=>setTimeout(r,Math.min(20000,1200*Math.pow(2,attempt))));
+  }
  }
- throw last instanceof Error?last:new Error('Open-Meteo 요청 실패');
+ throw new Error(lastMessage+' (6회 재시도 후 중단)');
 }
 export async function fetchOpenMeteoGrid(onProgress?:(done:number,total:number)=>void):Promise<OpenMeteoGrid>{
  const latitudes=Array.from({length:11},(_,i)=>45+i*GRID_STEP);
@@ -33,7 +52,7 @@ export async function fetchOpenMeteoGrid(onProgress?:(done:number,total:number)=
  for(const group of chunks(batches,3)){
   await Promise.all(group.map(async(batch)=>{
    const payload=await requestBatch(batch);
-   if(payload.length!==batch.length)throw new Error('API 다중 좌표 응답 개수가 요청과 다릅니다.');
+   if(payload.length!==batch.length)throw new Error('API 다중 좌표 응답 개수가 요청과 다릅니다. ('+payload.length+'/'+batch.length+')');
    const start=points.findIndex(p=>p.lat===batch[0].lat&&p.lon===batch[0].lon);
    batch.forEach((_,i)=>{responses[start+i]=payload[i];});
    done+=batch.length;onProgress?.(done,points.length);
@@ -47,7 +66,7 @@ export async function fetchOpenMeteoGrid(onProgress?:(done:number,total:number)=
  const out:OpenMeteoGrid={latitudes,longitudes,times,u10:new Float32Array(n),v10:new Float32Array(n),u100:new Float32Array(n),v100:new Float32Array(n),temperature2m:new Float32Array(n),humidity2m:new Float32Array(n),precipitation:new Float32Array(n),pressurePa:new Float32Array(n),pbl:new Float32Array(n)};
  const fields=['temperature_2m','relative_humidity_2m','precipitation','pressure_msl','wind_speed_10m','wind_direction_10m','wind_speed_100m','wind_direction_100m','boundary_layer_height'];
  for(let pi=0;pi<responses.length;pi++){
-  const h=responses[pi]?.hourly;if(!h||h.time?.length!==times.length)throw new Error('격자점별 시간 배열 길이가 일치하지 않습니다.');
+  const h=responses[pi]?.hourly;if(!h||h.time?.length!==times.length)throw new Error('격자점 '+pi+'의 시간 배열 길이가 일치하지 않습니다.');
   for(const f of fields)if(!Array.isArray(h[f])||h[f].length!==times.length)throw new Error('API 응답 변수 누락: '+f);
   for(let ti=0;ti<times.length;ti++){
    const ix=ti*points.length+pi;
