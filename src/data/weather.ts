@@ -51,11 +51,25 @@ export async function fetchOpenMeteoGrid(onProgress?:(done:number,total:number)=
  let done=0;
  for(const group of chunks(batches,3)){
   await Promise.all(group.map(async(batch)=>{
-   const payload=await requestBatch(batch);
-   if(payload.length!==batch.length)throw new Error('API 다중 좌표 응답 개수가 요청과 다릅니다. ('+payload.length+'/'+batch.length+')');
    const start=points.findIndex(p=>p.lat===batch[0].lat&&p.lon===batch[0].lon);
-   batch.forEach((_,i)=>{responses[start+i]=payload[i];});
-   done+=batch.length;onProgress?.(done,points.length);
+   try{
+    const payload=await requestBatch(batch);
+    if(payload.length!==batch.length)throw new Error('다중 좌표 응답 개수 불일치');
+    batch.forEach((_,i)=>{responses[start+i]=payload[i];});
+    done+=batch.length;onProgress?.(done,points.length);
+   }catch(batchError){
+    // If a multi-coordinate request is throttled/rejected, retry each point separately.
+    for(let i=0;i<batch.length;i++){
+     try{
+      const single=await requestBatch([batch[i]]);
+      if(single.length!==1)throw new Error('단일 좌표 응답 개수 불일치');
+      responses[start+i]=single[0];done++;onProgress?.(done,points.length);
+     }catch(singleError){
+      const p=batch[i];
+      throw new Error('격자점 '+(start+i+1)+'/'+points.length+' ('+p.lat.toFixed(2)+'°, '+p.lon.toFixed(2)+'°) 요청 실패: '+(singleError instanceof Error?singleError.message:String(singleError))+' · 묶음 요청 원인: '+(batchError instanceof Error?batchError.message:String(batchError)));
+     }
+    }
+   }
   }));
  }
  const first=responses[0]?.hourly;
