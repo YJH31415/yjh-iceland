@@ -31,10 +31,15 @@ export function stepParticle(p:Particle,dt:number,t:number,c:SimConfig){
   p.z+=vertical;if(p.z<=0){p.z=0;p.alive=false;}if(p.z>45000){p.z=45000;p.w=Math.min(0,p.w);}
 }
 export function concentrationAt(lat:number,lon:number,particles:Particle[],radiusKm=35){
-  // Ground-level city receptor: cylinder of radius 35 km and altitude 0–3 km.
-  // kg -> mg is 1e6 (not 1e15); concentration is represented ash mass / receptor volume.
-  const receptorHeight=3000,volume=Math.PI*(radiusKm*1000)**2*receptorHeight;let massKg=0;
-  for(const p of particles){if(!p.alive||p.z<0||p.z>receptorHeight)continue;const dy=(p.lat-lat)*111.2,dx=(p.lon-lon)*111.2*Math.cos(rad(lat));if(dx*dx+dy*dy<radiusKm*radiusKm)massKg+=p.mass;}
+  // City-overhead column mean: include airborne ash from the surface to 12 km,
+  // rather than missing the plume whenever it passes above the 0–3 km surface layer.
+  // Reported value remains mg/m³: represented ash mass / cylindrical air volume.
+  const receptorHeight=12000,volume=Math.PI*(radiusKm*1000)**2*receptorHeight;let massKg=0;
+  for(const p of particles){
+    if(!p.alive||p.z<0||p.z>receptorHeight)continue;
+    const dy=(p.lat-lat)*111.2,dx=(p.lon-lon)*111.2*Math.cos(rad(lat));
+    if(dx*dx+dy*dy<radiusKm*radiusKm)massKg+=p.mass;
+  }
   return massKg*1e6/volume;
 }
 export function alertLevel(v:number){return v>=10?'매우 높음':v>=5?'높음':v>=2?'중간':v>=.2?'낮음':'매우 낮음';}
