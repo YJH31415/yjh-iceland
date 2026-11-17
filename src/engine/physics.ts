@@ -36,7 +36,7 @@ export function cityExposureAt(lat:number,lon:number,particles:Particle[]):CityE
   // average. This catches elevated plumes. A 2-D Gaussian receptor kernel
   // smooths sparse Lagrangian super-particles over a 35-km horizontal scale.
   // This is a modelled airborne-layer estimate, not a ground monitor reading.
-  const sigmaKm=35,cutoffKm=105,layerHeight=1000;
+  const sigmaKm=15,cutoffKm=60,layerHeight=500;
   const sigmaM=sigmaKm*1000,normalizer=2*Math.PI*sigmaM*sigmaM*layerHeight;
   const layerMass=new Map<number,number>();let nearbyParticles=0,nearestKm=Infinity;
   for(const p of particles){
@@ -47,7 +47,7 @@ export function cityExposureAt(lat:number,lon:number,particles:Particle[]):CityE
     if(distanceKm<nearestKm)nearestKm=distanceKm;
     if(distanceKm>cutoffKm)continue;
     nearbyParticles++;
-    const layer=Math.min(19,Math.floor(p.z/layerHeight));
+    const layer=Math.min(39,Math.floor(p.z/layerHeight));
     const weight=Math.exp(-(distanceKm*distanceKm)/(2*sigmaKm*sigmaKm));
     layerMass.set(layer,(layerMass.get(layer)??0)+p.mass*weight);
   }
