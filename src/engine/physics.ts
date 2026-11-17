@@ -30,16 +30,30 @@ export function stepParticle(p:Particle,dt:number,t:number,c:SimConfig){
   p.lon=((p.lon+east/(R*Math.max(1e-6,Math.cos(rad(p.lat))))*180/Math.PI+540)%360)-180;
   p.z+=vertical;if(p.z<=0){p.z=0;p.alive=false;}if(p.z>45000){p.z=45000;p.w=Math.min(0,p.w);}
 }
-export function concentrationAt(lat:number,lon:number,particles:Particle[],radiusKm=35){
-  // City-overhead column mean: include airborne ash from the surface to 12 km,
-  // rather than missing the plume whenever it passes above the 0–3 km surface layer.
-  // Reported value remains mg/m³: represented ash mass / cylindrical air volume.
-  const receptorHeight=12000,volume=Math.PI*(radiusKm*1000)**2*receptorHeight;let massKg=0;
+export type CityExposure={concentration:number;nearbyParticles:number;nearestKm:number;peakAltitude:number};
+export function cityExposureAt(lat:number,lon:number,particles:Particle[]):CityExposure{
+  // Estimate the strongest 1-km ash layer over a city, not a 12-km column
+  // average. This catches elevated plumes. A 2-D Gaussian receptor kernel
+  // smooths sparse Lagrangian super-particles over a 35-km horizontal scale.
+  // This is a modelled airborne-layer estimate, not a ground monitor reading.
+  const sigmaKm=35,cutoffKm=105,layerHeight=1000;
+  const sigmaM=sigmaKm*1000,normalizer=2*Math.PI*sigmaM*sigmaM*layerHeight;
+  const layerMass=new Map<number,number>();let nearbyParticles=0,nearestKm=Infinity;
   for(const p of particles){
-    if(!p.alive||p.z<0||p.z>receptorHeight)continue;
-    const dy=(p.lat-lat)*111.2,dx=(p.lon-lon)*111.2*Math.cos(rad(lat));
-    if(dx*dx+dy*dy<radiusKm*radiusKm)massKg+=p.mass;
+    if(!p.alive||p.z<0||p.z>20000)continue;
+    const dLat=rad(p.lat-lat),dLon=rad(p.lon-lon);
+    const h=Math.sin(dLat/2)**2+Math.cos(rad(lat))*Math.cos(rad(p.lat))*Math.sin(dLon/2)**2;
+    const distanceKm=2*R/1000*Math.asin(Math.min(1,Math.sqrt(h)));
+    if(distanceKm<nearestKm)nearestKm=distanceKm;
+    if(distanceKm>cutoffKm)continue;
+    nearbyParticles++;
+    const layer=Math.min(19,Math.floor(p.z/layerHeight));
+    const weight=Math.exp(-(distanceKm*distanceKm)/(2*sigmaKm*sigmaKm));
+    layerMass.set(layer,(layerMass.get(layer)??0)+p.mass*weight);
   }
-  return massKg*1e6/volume;
+  let peakKg=0,peakAltitude=0;
+  for(const [layer,mass] of layerMass){if(mass>peakKg){peakKg=mass;peakAltitude=(layer+.5)*layerHeight;}}
+  return {concentration:peakKg*1e6/normalizer,nearbyParticles,nearestKm:Number.isFinite(nearestKm)?nearestKm:Infinity,peakAltitude};
 }
+export function concentrationAt(lat:number,lon:number,particles:Particle[]){return cityExposureAt(lat,lon,particles).concentration;}
 export function alertLevel(v:number){return v>=10?'매우 높음':v>=5?'높음':v>=2?'중간':v>=.2?'낮음':'매우 낮음';}
